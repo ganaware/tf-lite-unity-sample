@@ -127,11 +127,6 @@ public sealed class BlazePoseSample : MonoBehaviour
             {
                 var p = mtx.MultiplyPoint3x4(landmarkResult.keypoints_for_next_frame[i]);
                 p.y = 1.0f - p.y;
-                if (mode == Mode.FullBody)
-                {
-                    p.x = (p.x - 0.5f) * 0.84f + 0.5f; // WHY?
-                    p.y = (p.y - 0.5f) * 0.84f + 0.5f; // WHY?
-                }
                 keypoints_for_next_frame[i] = (Vector2)p;
             }
             keypoints_for_next_frame[2] = keypoints_for_next_frame[0]; // for upper body
