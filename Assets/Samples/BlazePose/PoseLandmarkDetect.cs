@@ -15,6 +15,7 @@ namespace TensorFlowLite
         {
             public float score;
             public Vector3[] joints;
+            public Vector3[] keypoints_for_next_frame;
         }
 
         public abstract int JointCount { get; }
@@ -55,6 +56,7 @@ namespace TensorFlowLite
             {
                 score = 0,
                 joints = new Vector3[JointCount],
+                keypoints_for_next_frame = new Vector3[2],
             };
 
             // Init filters
@@ -99,7 +101,7 @@ namespace TensorFlowLite
         public Result GetResult(bool useFilter = true)
         {
             // Normalize 0 ~ 255 => 0.0 ~ 1.0
-            const float SCALE = 1f / 255f;
+            const float SCALE = 1f / 256f;
             var mtx = cropMatrix.inverse;
 
             result.score = output1[0];
@@ -107,13 +109,18 @@ namespace TensorFlowLite
             Vector2 min = new Vector2(float.MaxValue, float.MaxValue);
             Vector2 max = new Vector2(float.MinValue, float.MinValue);
 
-            for (int i = 0; i < JointCount; i++)
+            for (int i = 0; i < JointCount + result.keypoints_for_next_frame.Length; i++)
             {
                 Vector3 p = mtx.MultiplyPoint3x4(new Vector3(
                     output0[i * 4] * SCALE,
                     1f - output0[i * 4 + 1] * SCALE,
                     output0[i * 4 + 2] * SCALE
                 ));
+                if (JointCount <= i)
+                {
+                    result.keypoints_for_next_frame[i - JointCount] = p;
+                    continue;
+                }
                 result.joints[i] = p;
 
                 if (p.x < min.x) { min.x = p.x; }

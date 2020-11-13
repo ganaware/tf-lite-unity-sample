@@ -29,6 +29,7 @@ public sealed class BlazePoseSample : MonoBehaviour
     WebCamTexture webcamTexture;
     PoseDetect poseDetect;
     PoseLandmarkDetect poseLandmark;
+    Vector2[] keypoints_for_next_frame;
 
     Vector3[] rtCorners = new Vector3[4]; // just cache for GetWorldCorners
     Vector3[] worldJoints;
@@ -79,12 +80,25 @@ public sealed class BlazePoseSample : MonoBehaviour
 
     void Update()
     {
-        poseDetect.Invoke(webcamTexture);
-        cameraView.material = poseDetect.transformMat;
-        cameraView.rectTransform.GetWorldCorners(rtCorners);
+        PoseDetect.Result pose;
+        if (keypoints_for_next_frame != null)
+        {
+            pose = new PoseDetect.Result
+            {
+                score = 1,
+                rect = default,
+                keypoints = keypoints_for_next_frame,
+            };
+        }
+        else
+        {
+            poseDetect.Invoke(webcamTexture);
+            cameraView.material = poseDetect.transformMat;
+            cameraView.rectTransform.GetWorldCorners(rtCorners);
 
-        var pose = poseDetect.GetResults(0.7f, 0.3f);
-        if (pose.score < 0) return;
+            pose = poseDetect.GetResults(0.7f, 0.3f);
+            if (pose.score < 0) return;
+        }
 
         DrawFrame(ref pose);
 
@@ -97,10 +111,32 @@ public sealed class BlazePoseSample : MonoBehaviour
         }
         var landmarkResult = poseLandmark.GetResult(useLandmarkFilter);
 
-        if (landmarkResult.score < 0.2f) return;
+        if (landmarkResult.score < 0.5f)
+        {
+            keypoints_for_next_frame = null;
+            return;
+        }
 
         DrawCropMatrix(poseLandmark.CropMatrix);
         DrawJoints(landmarkResult.joints);
+
+        {
+            Matrix4x4 mtx = WebCamUtil.GetMatrix(-webcamTexture.videoRotationAngle, false, webcamTexture.videoVerticallyMirrored);
+            keypoints_for_next_frame = new Vector2[4];
+            for (int i = 0; i < landmarkResult.keypoints_for_next_frame.Length; ++i)
+            {
+                var p = mtx.MultiplyPoint3x4(landmarkResult.keypoints_for_next_frame[i]);
+                p.y = 1.0f - p.y;
+                if (mode == Mode.FullBody)
+                {
+                    p.x = (p.x - 0.5f) * 0.84f + 0.5f; // WHY?
+                    p.y = (p.y - 0.5f) * 0.84f + 0.5f; // WHY?
+                }
+                keypoints_for_next_frame[i] = (Vector2)p;
+            }
+            keypoints_for_next_frame[2] = keypoints_for_next_frame[0]; // for upper body
+            keypoints_for_next_frame[3] = keypoints_for_next_frame[1]; // for upper body
+        }
     }
 
     void DrawFrame(ref PoseDetect.Result pose)
@@ -109,11 +145,14 @@ public sealed class BlazePoseSample : MonoBehaviour
         Vector3 max = rtCorners[2];
 
         draw.color = Color.green;
-        draw.Rect(MathTF.Lerp(min, max, pose.rect, true), 0.02f, min.z);
+        if (pose.rect != default)
+        {
+            draw.Rect(MathTF.Lerp(min, max, pose.rect, true), 0.02f, min.z);
+        }
 
         foreach (var kp in pose.keypoints)
         {
-            draw.Point(MathTF.Lerp(min, max, (Vector3)kp, true), 0.05f);
+            draw.Point(MathTF.Lerp(min, max, (Vector3)kp, true), 0.3f);
         }
         draw.Apply();
     }
